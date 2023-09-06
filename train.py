@@ -2,7 +2,6 @@ import numpy as np
 import torch
 import omegaconf
 
-import mbrl.env.cartpole_continuous as cartpole_env
 import mbrl.env.reward_fns as reward_fns
 import mbrl.env.termination_fns as termination_fns
 import mbrl.models as models
@@ -11,14 +10,16 @@ import mbrl.util.common as common_util
 import mbrl.util as util
 import mbrl.models.gaussian_mlp
 
+from utils.envs import get_env
+
 device = 'cuda:0' if torch.cuda.is_available() else 'cpu'
 
-
-
-
+env_name = 'cartpole' # 'multi' 'safe_cartpole' 'cartpole'
 seed = 0
-env = cartpole_env.CartPoleEnv(render_mode="rgb_array")
+
+env = get_env(env_name)
 env.reset(seed)
+
 rng = np.random.default_rng(seed=0)
 generator = torch.Generator(device=device)
 generator.manual_seed(seed)
@@ -33,7 +34,7 @@ term_fn = termination_fns.cartpole
 
 
 trial_length = 200
-num_trials = 500
+num_trials = 5000
 ensemble_size = 5
 
 # Everything with "???" indicates an option with a missing value.
@@ -125,26 +126,8 @@ model_trainer.train(
     callback=train_callback,
     silent=True)
 
-
-x = np.hstack((replay_buffer.obs, replay_buffer.action))
-y = np.hstack((replay_buffer.next_obs, replay_buffer.action))
-
-x_tensor = torch.from_numpy(x).float().to(device)
-x_tensor = dynamics_model.input_normalizer.normalize(x_tensor)
-y_tensor = torch.from_numpy(y).float().to(device)
-y_tensor = dynamics_model.input_normalizer.normalize(y_tensor)
-
-def get_mean_var(x, denormalize = False):
-    x_tensor = torch.from_numpy(x).float().to(device)
-    x_tensor = dynamics_model.input_normalizer.normalize(x_tensor)
-    with torch.no_grad():
-        mean, logvar = dynamics_model(x_tensor, use_propagation = False)
-        mean = torch.mean(mean, axis = 0)
-        var = torch.mean(torch.exp(logvar), axis = 0)
-        if denormalize:
-            mean = dynamics_model.input_normalizer.denormalize(torch.hstack((mean, torch.Tensor([[0]]).cuda())))[:4]
-            var = dynamics_model.input_normalizer.denormalize(torch.hstack((var, torch.Tensor([[0]]).cuda())))[:4]
-    return mean, var
-
-
-print(1)
+save_dir = f'models/{env_name}/'
+import os
+os.makedirs(save_dir, exist_ok=True)
+dynamics_model.save(save_dir)
+print(f'Finished training dynamics model. Final train loss: {train_losses[-1]}. Final val loss: {val_scores[-1]}.')
