@@ -90,11 +90,25 @@ class CDM():
         print("# samples stored", self.replay_buffer.num_stored)
     
     @torch.no_grad
-    def predict(self, cost, obs, action):
-        # predicts cost for next time step based on current cost, obs and action
+    def forward_mean_std(self, cost, obs, action):
+        # returns the mean and std of the ensemble predictions
+
+        if type(cost) is list:
+            cost = np.array(cost)
         model_in = self.dynamics_model._get_model_input(cost, np.concatenate((obs, action)))
         pred_mean, _ = self.dynamics_model.model._default_forward(model_in, use_propagation=False, return_g=True)
-        pred_mean = torch.mean(pred_mean, axis=0)* 3 @ action
-        pred_mean = cost + pred_mean.squeeze(0).detach().cpu().numpy()
+        pred_var, pred_mean = torch.var_mean(pred_mean, axis=0)
+        pred_std = np.sqrt(pred_var.squeeze(0).detach().cpu().numpy())
         
-        return pred_mean
+        pred_mean = pred_mean.squeeze(0).detach().cpu().numpy()
+        
+        return pred_mean, pred_std 
+    
+    @torch.no_grad
+    def predict(self, cost, obs, action):
+        # predicts cost for next time step based on current cost, obs and action
+        
+        mean, std  = self.forward_mean_std(cost, obs, action)
+        
+        return cost + mean @ action
+
