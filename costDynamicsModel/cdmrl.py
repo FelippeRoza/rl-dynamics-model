@@ -2,6 +2,7 @@ import omegaconf
 import numpy as np
 import os
 import torch 
+import json
 
 from .utils.model_config import get_base_config
 from .utils.rollout import cost_rollout_agent_trajectories
@@ -63,6 +64,9 @@ class CDM():
         # saves the dynamics model in the provided directory
         os.makedirs(save_dir, exist_ok = True)
         self.dynamics_model.save(save_dir)
+        with open(os.path.join(save_dir, 'config.txt'), 'w') as f:
+            json.dump(self.cfg_dict, f)
+
 
     def load(self, load_dir):
         self.dynamics_model.load(load_dir)
