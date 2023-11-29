@@ -31,7 +31,7 @@ class CDM():
         cfg_dict['dynamics_model']['out_size'] = self.cost_shape[0] * self.action_shape[0]
 
         cfg_dict["overrides"]["trial_length"] = env.spec.max_episode_steps  # ep length
-        cfg_dict["overrides"]["num_steps"] = buffer_size
+        cfg_dict["overrides"]["num_steps"] = int(buffer_size)
 
         self.cfg_dict = cfg_dict
         self.cfg = omegaconf.OmegaConf.create(self.cfg_dict)
@@ -57,8 +57,12 @@ class CDM():
             bootstrap_permutes=False,  # build bootstrap dataset using sampling with replacement
         )
 
+        def train_callback(_model, _total_calls, _epoch, tr_loss, val_score, _best_val):
+            print(f'epoch: {_epoch} training loss:{tr_loss} validation score: {val_score.mean().item()}')
+ 
+ 
         model_trainer.train(dataset_train, dataset_val=dataset_val, num_epochs=n_epochs, patience=50, 
-                            silent=False)
+                            silent=False, callback=train_callback)
 
     def save(self, save_dir):
         # saves the dynamics model in the provided directory
