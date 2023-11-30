@@ -17,7 +17,7 @@ import mbrl.util.common as common_util
 class CDM():
     # cost dynamics model
     
-    def __init__(self, env, buffer_size = 1e6, N=5, device = 'cpu') -> None:
+    def __init__(self, env, buffer_size = 1e6, N=5, device = 'cpu', linearized=True) -> None:
         cfg_dict = get_base_config()
 
         self.env = env
@@ -25,10 +25,17 @@ class CDM():
         self.action_shape = env.action_space.shape
         self.obs_action_shape = (env.observation_space.shape[0] + env.action_space.shape[0], )
         self.cost_shape = env.constraint_space.shape
+        self.linearized = linearized
 
         cfg_dict["dynamics_model"]["device"] = device
         cfg_dict["dynamics_model"]["ensemble_size"] = N
-        cfg_dict['dynamics_model']['out_size'] = self.cost_shape[0] * self.action_shape[0]
+
+        if linearized:
+            cfg_dict['dynamics_model']['out_size'] = self.cost_shape[0] * self.action_shape[0]
+        else:
+            cfg_dict['dynamics_model']['_target_'] = "mbrl.models.GaussianMLP"
+            cfg_dict['dynamics_model']['deterministic'] = True
+            
 
         cfg_dict["overrides"]["trial_length"] = env.spec.max_episode_steps  # ep length
         cfg_dict["overrides"]["num_steps"] = int(buffer_size)
@@ -38,7 +45,8 @@ class CDM():
     
         # Create a 1-D dynamics model for this environment
         self.dynamics_model = common_util.create_one_dim_tr_model(self.cfg, self.cost_shape, self.obs_action_shape)
-        self.dynamics_model.model.set_shapes(self.obs_shape, self.action_shape, self.cost_shape)
+        if linearized:
+            self.dynamics_model.model.set_shapes(self.obs_shape, self.action_shape, self.cost_shape)
         
         # self.model_env = models.ModelEnv(env, self.dynamics_model, term_fn, reward_fn, generator=generator)
         self.replay_buffer = common_util.create_replay_buffer(self.cfg, self.cost_shape, self.obs_action_shape)
@@ -104,6 +112,7 @@ class CDM():
         if type(cost) is list:
             cost = np.array(cost)
         model_in = self.dynamics_model._get_model_input(cost, np.concatenate((obs, action)))
+        model_in = model_in.float().unsqueeze(0)
         pred_mean, _ = self.dynamics_model.model._default_forward(model_in, use_propagation=False, return_g=True)
         pred_var, pred_mean = torch.var_mean(pred_mean, axis=0)
         pred_std = np.sqrt(pred_var.squeeze(0).detach().cpu().numpy())
@@ -118,5 +127,8 @@ class CDM():
         
         mean, std  = self.forward_mean_std(cost, obs, action)
         
-        return cost + mean @ action
+        if self.linearized:
+            return cost + mean @ action
 
+        else:
+            return cost + mean
