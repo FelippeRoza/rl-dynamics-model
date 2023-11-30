@@ -24,7 +24,7 @@ def get_base_config():
         "algorithm": {
             "learned_rewards": False,
             "target_is_delta": True,
-            "normalize": False,
+            "normalize": True,
         },
         # these are experiment specific options
         "overrides": {
