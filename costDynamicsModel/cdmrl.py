@@ -76,8 +76,8 @@ class CDM():
         # saves the dynamics model in the provided directory
         os.makedirs(save_dir, exist_ok = True)
         self.dynamics_model.save(save_dir)
-        with open(os.path.join(save_dir, 'config.txt'), 'w') as f:
-            json.dump(self.cfg_dict, f)
+        with open(os.path.join(save_dir, 'config.json'), 'w') as f:
+            json.dump(self.cfg_dict, f, indent=2)
 
 
     def load(self, load_dir):
