@@ -167,7 +167,6 @@ def step_env_and_add_to_buffer(
         next_obs, reward, terminated, info = env.step(action)
 
     next_cost = info['cost']
-    max_next_cost = max(next_cost)
 
     truncated = False
 
