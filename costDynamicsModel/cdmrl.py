@@ -17,15 +17,16 @@ import mbrl.util.common as common_util
 class CDM():
     # cost dynamics model
     
-    def __init__(self, env, buffer_size = 1e6, N=5, device = 'cpu', linearized=True) -> None:
+    def __init__(self, env, buffer_size = 1e6, N=5, device = 'cpu', linearized=True, stack_length = 1) -> None:
         cfg_dict = get_base_config()
 
         self.env = env
         self.obs_shape = env.observation_space.shape
         self.action_shape = env.action_space.shape
-        self.obs_action_shape = (env.observation_space.shape[0] + env.action_space.shape[0], )
+        self.obs_action_shape = (env.observation_space.shape[0]*stack_length + env.action_space.shape[0]*stack_length, )
         self.cost_shape = env.constraint_space.shape
         self.linearized = linearized
+        self.stack_length = stack_length
 
         cfg_dict["dynamics_model"]["device"] = device
         cfg_dict["dynamics_model"]["ensemble_size"] = N
@@ -87,6 +88,16 @@ class CDM():
         # manually add to buffer
         self.replay_buffer.add(cost, np.concatenate([obs, action]), next_cost, reward, terminated, truncated)
     
+    def get_empty_stack(self):
+        return np.zeros((self.replay_buffer.action.shape[1],))
+    
+    def stack_frame(self, frame_stack, new_frame):
+        # roll frame_stack and add new frame to the end
+        assert new_frame.shape == (self.obs_shape[0] + self.action_shape[0], ), \
+                f"new frame shape should be {(self.obs_shape[0] + self.action_shape[0], )}"
+        frame_stack = np.roll(frame_stack, -new_frame.shape[0])
+        frame_stack[-new_frame.shape[0]:] = new_frame
+        return frame_stack
 
     def fill_buffer(self, steps=None):
         # fill buffer with randomly exploring the environment
@@ -106,12 +117,12 @@ class CDM():
         print("# samples stored", self.replay_buffer.num_stored)
     
     @torch.no_grad
-    def forward_mean_std(self, cost, obs, action):
+    def forward_mean_std(self, cost, input_stack):
         # returns the mean and std of the ensemble predictions
 
         if type(cost) is list:
             cost = np.array(cost)
-        model_in = self.dynamics_model._get_model_input(cost, np.concatenate((obs, action)))
+        model_in = self.dynamics_model._get_model_input(cost, input_stack)
         model_in = model_in.float().unsqueeze(0)
         pred_mean, _ = self.dynamics_model.model._default_forward(model_in, use_propagation=False, return_g=True)
         pred_var, pred_mean = torch.var_mean(pred_mean, axis=0)
@@ -122,10 +133,10 @@ class CDM():
         return pred_mean, pred_std 
     
     @torch.no_grad
-    def predict(self, cost, obs, action):
+    def predict(self, cost, input_stack, action):
         # predicts cost for next time step based on current cost, obs and action
         
-        mean, std  = self.forward_mean_std(cost, obs, action)
+        mean, std  = self.forward_mean_std(cost, input_stack)
         
         if self.linearized:
             return cost + mean @ action

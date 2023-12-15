@@ -72,6 +72,7 @@ def cost_rollout_agent_trajectories(
     while True:
 
         obs, info = env.reset(seed=seed)
+        frame_stack = np.zeros((replay_buffer.action.shape[1],))
         cost = info['cost']
 
         agent.reset()
@@ -80,10 +81,11 @@ def cost_rollout_agent_trajectories(
         total_reward = 0.0
         while not terminated and not truncated:
             if replay_buffer is not None:
-                next_obs, reward, terminated, truncated, info = step_env_and_add_to_buffer(
+                next_obs, reward, terminated, truncated, info, frame_stack = step_env_and_add_to_buffer(
                     env,
                     obs,
                     cost,
+                    frame_stack,
                     agent,
                     agent_kwargs,
                     replay_buffer,
@@ -123,6 +125,7 @@ def step_env_and_add_to_buffer(
     env: gym.Env,
     obs: np.ndarray,
     cost: np.ndarray,
+    frame_stack: np.ndarray,
     agent: mbrl.planning.Agent,
     agent_kwargs: Dict,
     replay_buffer: ReplayBuffer,
@@ -170,6 +173,10 @@ def step_env_and_add_to_buffer(
 
     truncated = False
 
-    replay_buffer.add(cost, np.concatenate([obs, action]), next_cost, reward, terminated, truncated)
+    input = np.concatenate([obs, action])
+    frame_stack = np.roll(frame_stack, -input.shape[0])
+    frame_stack[-input.shape[0]:] = input
 
-    return next_obs, reward, terminated, truncated, info
+    replay_buffer.add(cost, frame_stack, next_cost, reward, terminated, truncated)
+
+    return next_obs, reward, terminated, truncated, info, frame_stack
