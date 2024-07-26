@@ -138,6 +138,8 @@ class CDM():
 
         if type(cost) is list:
             cost = np.array(cost)
+        if cost.shape == (): # float cost - non dimensional arrays
+            cost = np.expand_dims(cost, axis=0)
         model_in = self.dynamics_model._get_model_input(cost, input_stack)
         model_in = model_in.float().unsqueeze(0)
         pred_mean, _ = self.dynamics_model.model._default_forward(model_in, use_propagation=False, return_g=True)
