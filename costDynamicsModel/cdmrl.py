@@ -133,13 +133,18 @@ class CDM():
         return pred_mean, pred_std 
     
     @torch.no_grad
-    def predict(self, cost, input_stack, action):
+    def predict(self, cost, input_stack, action, return_std = False):
         # predicts cost for next time step based on current cost, obs and action
         
         mean, std  = self.forward_mean_std(cost, input_stack)
         
         if self.linearized:
-            return cost + mean @ action
+            pred_c = cost + mean @ action
 
         else:
-            return cost + mean
+            pred_c = cost + mean
+        
+        if return_std:
+            return pred_c, std
+        else:
+            return pred_c
