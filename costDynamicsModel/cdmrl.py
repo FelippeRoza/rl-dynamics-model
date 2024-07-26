@@ -73,6 +73,22 @@ class CDM():
         model_trainer.train(dataset_train, dataset_val=dataset_val, num_epochs=n_epochs, patience=50, 
                             silent=False, callback=train_callback)
 
+    def evaluate(self, val_ratio = None):
+
+        if val_ratio is None : val_ratio = self.cfg.overrides.validation_ratio
+        model_trainer = models.ModelTrainer(self.dynamics_model, optim_lr=1e-3, weight_decay=5e-5)
+
+        dataset_train, dataset_val = common_util.get_basic_buffer_iterators(
+            self.replay_buffer,
+            batch_size = self.cfg.overrides.model_batch_size,
+            val_ratio = val_ratio,
+            ensemble_size = self.cfg.dynamics_model.ensemble_size,
+            shuffle_each_epoch=True,
+            bootstrap_permutes=False,  # build bootstrap dataset using sampling with replacement
+        )
+ 
+        return model_trainer.evaluate(dataset_val)
+
     def save(self, save_dir):
         # saves the dynamics model in the provided directory
         os.makedirs(save_dir, exist_ok = True)
