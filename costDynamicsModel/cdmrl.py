@@ -26,7 +26,6 @@ class CDM():
         self.obs_action_shape = (env.observation_space.shape[0]*stack_length + env.action_space.shape[0]*stack_length, )
         self.cost_shape = env.constraint_space.shape
         self.linearized = linearized
-        self.stack_length = stack_length
 
         cfg_dict["dynamics_model"]["device"] = device
         cfg_dict["dynamics_model"]["ensemble_size"] = N
@@ -52,6 +51,8 @@ class CDM():
         # self.model_env = models.ModelEnv(env, self.dynamics_model, term_fn, reward_fn, generator=generator)
         self.replay_buffer = common_util.create_replay_buffer(self.cfg, self.cost_shape, self.obs_action_shape)
     
+        self.stack_length = stack_length
+        self.stack = self.get_empty_stack()
 
     def train(self, n_epochs=20):
 
@@ -151,14 +152,15 @@ class CDM():
         return pred_mean, pred_std 
     
     @torch.no_grad
-    def predict(self, cost, input_stack, action, return_std = False):
+    def predict(self, cost, obs, action, return_std = False):
         # predicts cost for next time step based on current cost, obs and action
         
-        mean, std  = self.forward_mean_std(cost, input_stack)
+        input = np.concatenate((obs, action))
+        self.stack = self.stack_frame(self.stack, input)
+        mean, std  = self.forward_mean_std(cost, self.stack)
         
         if self.linearized:
             pred_c = cost + mean @ action
-
         else:
             pred_c = cost + mean
         
