@@ -9,7 +9,8 @@ import torch.nn as nn
 n_steps = 1000
 env_name = 'ContSafetyBallReach-v0'
 env_name = 'MultiagentDescentralizedSafe-v0'
-env_name = 'SpaceshipSafe-v0'
+# env_name = 'SpaceshipSafe-v0'
+model_dir = 'data/sl_models/'
 env = gym.make(env_name)
 next_cost_list = []
 next_cost_pred_list = []
@@ -19,7 +20,7 @@ cost = info['cost']
 
 model = SafetyLayerNN(input_dim=len(obs)+len(cost)+env.action_space.shape[0], 
                       output_dim=len(cost))
-load_model(model, 'trained_model.pth')
+load_model(model, f'{model_dir}/{env_name}_sl_model.pth')
 model.eval()
 
 

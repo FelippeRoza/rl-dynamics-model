@@ -4,6 +4,8 @@ import numpy as np
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from tqdm import tqdm  # For the progress bar
 import torch
+import os
+import argparse
 
 def run_env(env_name, num_steps):
     env = gym.make(env_name)
@@ -74,10 +76,15 @@ def save_dataset(observations, actions, costs, next_costs, filename):
     print(f"Dataset saved to {filename}")
 
 if __name__ == "__main__":
-    env_name = 'MultiagentDescentralizedSafe-v0'
-    total_steps = 1_000_000
-    num_envs = 25  # Number of parallel environments
-    num_steps_per_env = int(total_steps/num_envs)  # Number of steps per environment
+    parser = argparse.ArgumentParser(description="Collects data from continuous-safety-gym and save as a torch dataset")
+    parser.add_argument('--env', type=str, help='Environment name')
+    parser.add_argument('--dataset_dir', type=str, help='Dataset saving location')
+    parser.add_argument('--n_steps', type=int, help='Number of total collected steps', default=500_000)
+    parser.add_argument('--n_proc', type=int, help='Number of parallel processes to speed up collection', default=8)
+    args = parser.parse_args()
 
-    observations, actions, costs, next_costs = collect_data_parallel(env_name, num_steps_per_env, num_envs)
-    save_dataset(observations, actions, costs, next_costs, f'{env_name}_dataset.pt')
+    os.makedirs(args.dataset_dir, exist_ok=True)
+    num_steps_per_env = int(args.n_steps/args.n_proc)  # Number of steps per environment
+
+    observations, actions, costs, next_costs = collect_data_parallel(args.env, num_steps_per_env, args.n_proc)
+    save_dataset(observations, actions, costs, next_costs, os.path.join(args.dataset_dir, f'{args.env}_dataset.pt'))

@@ -4,7 +4,8 @@ import torch.optim as optim
 from costDynamicsModel import CDM
 import continuousSafetyGym
 from torch.utils.data import DataLoader, Dataset
-
+import os
+import argparse
 
 class GymDataset(Dataset):
     def __init__(self, dataset_path):
@@ -59,6 +60,7 @@ def train_model(dataloader, model, epochs=10):
         print(f"Epoch {epoch + 1}/{epochs}, Loss: {loss.item()}")
 
 def save_model(model, filepath):
+    os.makedirs(os.path.dirname(filepath), exist_ok=True)
     torch.save(model.state_dict(), filepath)
     print(f"Model saved to {filepath}")
 
@@ -69,15 +71,21 @@ def load_model(model, filepath):
 
 
 if __name__ == "__main__":
-    env_name = 'MultiagentDescentralizedSafe-v0'
-    model_dir = 'data/sl_models/'
-    dataset = GymDataset(f'{env_name}_dataset.pt')
+    parser = argparse.ArgumentParser(description="Collects data from continuous-safety-gym and save as a torch dataset")
+    parser.add_argument('--env', type=str, help='Environment name')
+    parser.add_argument('--dataset_dir', type=str, help='Directory where dataset is located')
+    parser.add_argument('--model_dir', type=str, help='Directory to save trained model')
+    parser.add_argument('--n_epochs', type=int, help='Number of training epochs', default=10)
+    args = parser.parse_args()
+
+    dataset = GymDataset(os.path.join(args.dataset_dir, f'{args.env}_dataset.pt'))
     dataloader = DataLoader(dataset, batch_size=32, shuffle=True)
     
+    model_path = os.path.join(args.model_dir, f'{args.env}_sl_model.pth')
     model = SafetyLayerNN(input_dim=dataset.in_dim(), output_dim=dataset.out_dim())
-    train_model(dataloader, model)
-    save_model(model, f'{env_name}_sl_model.pth')
+    train_model(dataloader, model, epochs=args.n_epochs)
+    save_model(model, model_path)
 
     # test if loading works
     model = SafetyLayerNN(input_dim=dataset.in_dim(), output_dim=dataset.out_dim())
-    load_model(model, f'{env_name}_sl_model.pth')
+    load_model(model, model_path)
