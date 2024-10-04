@@ -6,7 +6,7 @@ import continuousSafetyGym
 from torch.utils.data import DataLoader, Dataset
 import os
 import argparse
-from costDynamicsModel.models import RegressionNN
+from costDynamicsModel.models import RegressionNN, BayesianNN
 
 
 class GymDataset(Dataset):
@@ -48,10 +48,10 @@ if __name__ == "__main__":
     dataloader = DataLoader(dataset, batch_size=32, shuffle=True)
     
     model_path = os.path.join(args.model_dir, f'{args.env}_sl_model.pth')
-    model = RegressionNN(input_dim=dataset.in_dim(), output_dim=dataset.out_dim())
+    model = BayesianNN(input_dim=dataset.in_dim(), output_dim=dataset.out_dim())
     model.learn(dataloader, epochs=args.n_epochs)
     model.save(model_path)
 
     # test if loading works
-    model = RegressionNN(input_dim=dataset.in_dim(), output_dim=dataset.out_dim())
+    model = BayesianNN(input_dim=dataset.in_dim(), output_dim=dataset.out_dim())
     model.load(model_path)
