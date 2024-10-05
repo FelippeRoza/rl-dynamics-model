@@ -8,5 +8,5 @@ setup(name='costDynamicsModel',
       packages=find_packages(),
       include_package_data=True,
       zip_safe=False,
-      install_requires=['gymnasium>=0.26.3', 'mbrl>=0.2.0',]
+      install_requires=['gymnasium>=0.26.3', 'mbrl>=0.2.0', 'mlflow>=2.16.2']
 )

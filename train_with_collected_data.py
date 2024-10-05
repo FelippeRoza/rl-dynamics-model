@@ -6,6 +6,7 @@ import continuousSafetyGym
 from torch.utils.data import DataLoader, Dataset
 import os
 import argparse
+import mlflow
 from costDynamicsModel.models import RegressionNN, BayesianNN
 
 
@@ -44,14 +45,32 @@ if __name__ == "__main__":
     parser.add_argument('--n_epochs', type=int, help='Number of training epochs', default=10)
     args = parser.parse_args()
 
-    dataset = GymDataset(os.path.join(args.dataset_dir, f'{args.env}_dataset.pt'))
-    dataloader = DataLoader(dataset, batch_size=32, shuffle=True)
-    
-    model_path = os.path.join(args.model_dir, f'{args.env}_sl_model.pth')
-    model = BayesianNN(input_dim=dataset.in_dim(), output_dim=dataset.out_dim())
-    model.learn(dataloader, epochs=args.n_epochs)
-    model.save(model_path)
+    mlflow.set_experiment("Safety Layer Training")
+    with mlflow.start_run(run_name=f'{args.env}_{args.n_epochs}epochs'):
+        mlflow.log_param("environment", args.env)
+        mlflow.log_param("n_epochs", args.n_epochs)
 
-    # test if loading works
-    model = BayesianNN(input_dim=dataset.in_dim(), output_dim=dataset.out_dim())
-    model.load(model_path)
+        # Prepare dataset and dataloader
+        dataset = GymDataset(os.path.join(args.dataset_dir, f'{args.env}_rl_dataset.pt'))
+        dataloader = DataLoader(dataset, batch_size=32, shuffle=True)
+        mlflow.log_param("input_dim", dataset.in_dim())
+        mlflow.log_param("output_dim", dataset.out_dim())
+
+        # Initialize model
+        model_path = os.path.join(args.model_dir, f'{args.env}_sl_model.pth')
+        model = BayesianNN(input_dim=dataset.in_dim(), output_dim=dataset.out_dim())
+        mlflow.log_param("model_architecture", "BayesianNN")
+        mlflow.log_param("model_path", model_path)
+
+        model.learn(dataloader, epochs=args.n_epochs)  # Assuming your learn method returns loss
+        
+        # Save the trained model
+        model.save(model_path)
+        mlflow.pytorch.log_model(model, "model")
+
+        # Test if loading works
+        model = BayesianNN(input_dim=dataset.in_dim(), output_dim=dataset.out_dim())
+        model.load(model_path)
+
+        # Log model saving
+        mlflow.log_artifact(model_path)
