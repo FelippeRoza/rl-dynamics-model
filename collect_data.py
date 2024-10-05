@@ -6,9 +6,13 @@ from tqdm import tqdm  # For the progress bar
 import torch
 import os
 import argparse
+from stable_baselines3 import PPO, SAC
+from stable_baselines3.sac.policies import SACPolicy
 
-def run_env(env_name, num_steps):
+def run_env(env_name, num_steps, rl_path):
     env = gym.make(env_name)
+    if rl_path:
+        rl_agent = SAC.load(rl_path, env=env)
     observation, info = env.reset()
     cost = info['cost']
     observations = []
@@ -17,7 +21,10 @@ def run_env(env_name, num_steps):
     next_costs = []
     
     for _ in tqdm(range(num_steps)):
-        action = env.action_space.sample()  # Random action
+        if rl_path:
+            action, _states = rl_agent.predict(observation, deterministic=True)
+        else:
+            action = env.action_space.sample()  # Random action        
         next_observation, reward, terminated, truncated, info = env.step(action)
         next_cost = info['cost']
         observations.append(observation)
@@ -37,7 +44,7 @@ def run_env(env_name, num_steps):
     # Return observations and actions as numpy arrays
     return np.array(observations), np.array(actions), np.array(costs), np.array(next_costs)
 
-def collect_data_parallel(env_name, num_steps_per_env, num_envs):
+def collect_data_parallel(env_name, num_steps_per_env, num_envs, rl_path=''):
     observations = []
     actions = []
     costs = []
@@ -45,7 +52,7 @@ def collect_data_parallel(env_name, num_steps_per_env, num_envs):
     
     executor = ProcessPoolExecutor()
     try:
-        futures = [executor.submit(run_env, env_name, num_steps_per_env) for _ in range(num_envs)]
+        futures = [executor.submit(run_env, env_name, num_steps_per_env, rl_path) for _ in range(num_envs)]
         
         for future in tqdm(as_completed(futures), total=num_envs, desc="Collecting data"):
             obs, acts, cost, next_cost = future.result()
@@ -81,10 +88,11 @@ if __name__ == "__main__":
     parser.add_argument('--dataset_dir', type=str, help='Dataset saving location')
     parser.add_argument('--n_steps', type=int, help='Number of total collected steps', default=500_000)
     parser.add_argument('--n_proc', type=int, help='Number of parallel processes to speed up collection', default=8)
+    parser.add_argument('--rl_agent_path', type=str, help='Path to load RL agent. If none random actions will be used.', default='')
     args = parser.parse_args()
 
     os.makedirs(args.dataset_dir, exist_ok=True)
     num_steps_per_env = int(args.n_steps/args.n_proc)  # Number of steps per environment
 
-    observations, actions, costs, next_costs = collect_data_parallel(args.env, num_steps_per_env, args.n_proc)
+    observations, actions, costs, next_costs = collect_data_parallel(args.env, num_steps_per_env, args.n_proc, args.rl_agent_path)
     save_dataset(observations, actions, costs, next_costs, os.path.join(args.dataset_dir, f'{args.env}_dataset.pt'))
