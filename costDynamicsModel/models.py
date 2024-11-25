@@ -62,6 +62,55 @@ class BayesianNN(nn.Module):
         load_model(self, path)
 
 
+class EnsembleModel(nn.Module):  # Subclassing torch.nn.Module
+    def __init__(self, input_dim, output_dim, device='cpu', num_models=5, label='ensemble'):
+        super(EnsembleModel, self).__init__()
+        self.models = torch.nn.ModuleList([RegressionNN(input_dim, output_dim) for _ in range(num_models)])
+        self.device = device
+        self.label=label
+        if device:
+            self.to(device)
+
+    def forward(self, x):
+        # Collect predictions from each model in the ensemble
+        predictions = torch.stack([model(x) for model in self.models])
+        mean_prediction = predictions.mean(dim=0)
+        variance_prediction = predictions.var(dim=0)
+        return mean_prediction, variance_prediction
+
+    def learn(self, dataloader, epochs=10):
+        
+        train_dataset, test_dataset = torch.utils.data.random_split(dataloader.dataset, [0.8, 0.2])
+        
+        for epoch in range(epochs):
+            subsets = create_bootstrap_datasets(train_dataset, len(self.models))
+            for model, subset in zip(self.models, subsets):
+                train(model, subset, epoch)
+            evaluate_model(self, test_dataset, epoch, batch_size=1024)
+
+    def save(self, directory_path, model_type):
+        """
+        Save an ensemble of models to a specified directory.
+        """
+        for i, model in enumerate(self.models):
+            # Define a unique path for each model in the ensemble
+            model_path = os.path.join(directory_path, f"{model_type}_{i+1}.pt")
+            save_model(model, model_path)
+        print(f"Ensemble saved to {directory_path}")
+
+    def load(self, directory_path):
+        """
+        Load an ensemble of models from a specified directory.
+
+        Args:
+            directory_path (str): Path to the directory where models are saved.
+        """
+        for i, model in enumerate(self.models):
+            # Define a unique path for each model in the ensemble
+            model_path = os.path.join(directory_path, f"ensemble_model_{i+1}.pt")
+            model.load_state_dict(torch.load(model_path, map_location=self.device))
+
+
 class RegressionNN(nn.Module):
     def __init__(self, input_dim, output_dim):
         super(RegressionNN, self).__init__()
