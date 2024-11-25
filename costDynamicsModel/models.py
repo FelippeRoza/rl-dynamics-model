@@ -187,32 +187,44 @@ class EnsembleModel(nn.Module):  # Subclassing torch.nn.Module
 
 
 class RegressionNN(nn.Module):
-    def __init__(self, input_dim, output_dim):
+    def __init__(self, input_dim, output_dim, label='cost_model'):
         super(RegressionNN, self).__init__()
+        self.label = label
         self.fc1 = nn.Linear(input_dim, 128)
         self.fc2 = nn.Linear(128, output_dim)
+        self._initialize_weights()
 
     def forward(self, x):
         x = torch.relu(self.fc1(x))
         x = self.fc2(x)
         return x
 
+    def calculate_mse_loss(self, inputs, target):
+        criterion = nn.MSELoss()
+        outputs = self(inputs)
+        loss = criterion(outputs, target)  # Compute MSE loss
+        return loss
+
+    def calculate_loss(self, inputs, target):
+        return self.calculate_mse_loss(inputs, target)
+    
     def learn(self, dataloader, epochs=10):
-        criterion = nn.MSELoss()  # Mean Squared Error for regression
-        optimizer = optim.Adam(self.parameters(), lr=0.001)
-        
-        for epoch in range(epochs):
-            for batch_idx, (observations, target_values) in enumerate(dataloader):
-                optimizer.zero_grad()
-                outputs = self(observations)
-                loss = criterion(outputs, target_values)  # Compute MSE loss
-                loss.backward()
-                optimizer.step()
-                
-            print(f"Epoch {epoch + 1}/{epochs}, Loss: {loss.item()}")
+        train(self, dataloader, epochs)
 
     def save(self, path):
         save_model(self, path)
     
     def load(self, path):
         load_model(self, path)
+    
+    def _initialize_weights(self):
+        """
+        Custom weight initialization for the network.
+        Ensures random weights for each model instance.
+        """
+        nn.init.kaiming_uniform_(self.fc1.weight, nonlinearity='relu')
+        nn.init.kaiming_uniform_(self.fc2.weight, nonlinearity='linear')
+        if self.fc1.bias is not None:
+            nn.init.constant_(self.fc1.bias, 0)
+        if self.fc2.bias is not None:
+            nn.init.constant_(self.fc2.bias, 0)
