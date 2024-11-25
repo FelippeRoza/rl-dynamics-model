@@ -100,13 +100,16 @@ def evaluate_model(model, test_dataset, epoch_number, batch_size=1024):
     )
 
 class BayesianNN(nn.Module):
-    def __init__(self, input_dim, output_dim, hidden_dim=64):
+    def __init__(self, input_dim, output_dim, hidden_dim=64, device='cpu', label='cost_model'):
         super(BayesianNN, self).__init__()
         # Define the layers
+        self.label = label
         self.fc1 = nn.Linear(input_dim, hidden_dim)
         self.fc2 = nn.Linear(hidden_dim, hidden_dim)
         self.mean = nn.Linear(hidden_dim, output_dim)  # Outputs the mean (μ)
         self.log_variance = nn.Linear(hidden_dim, output_dim)  # Outputs log(σ²) for stability
+        if device:
+            self.to(device)
     
     def forward(self, x):
         x = torch.relu(self.fc1(x))
@@ -116,22 +119,19 @@ class BayesianNN(nn.Module):
         
         return mean, log_var  # Return mean and log(variance)
 
-    def learn(self, dataloader, epochs=10):        
-        optimizer = optim.Adam(self.parameters(), lr=0.001)
-        for epoch in range(epochs):  # Example with 100 epochs
-            self.train()  # Set model to training mode
-            running_loss = 0.0
-            for batch_idx, (inputs, target) in enumerate(dataloader):
-                optimizer.zero_grad()
-                mean, log_var = self(inputs)
-                loss = nll_gaussian_loss(target, mean, log_var) # Compute NLL loss
-                loss.backward()
-                optimizer.step()
-                running_loss += loss.item()
-            print(f'Epoch {epoch+1}, Loss: {running_loss/len(dataloader)}')
+    def calculate_loss(self, inputs, target):
+        mean, log_var = self(inputs)
+        loss = nll_gaussian_loss(target, mean, log_var) # Compute NLL loss
+        return loss
 
-    def save(self, path):
-        save_model(self, path)
+    def learn(self, dataloader, epochs=10):
+        train_dataset, test_dataset = torch.utils.data.random_split(dataloader.dataset, [0.8, 0.2])
+        for epoch in range(epochs):
+            train(self, train_dataset, epoch)
+            evaluate_model(self, test_dataset, epoch, batch_size=1024)
+    
+    def save(self, directory_path, model_type):
+        save_model(self, os.path.join(directory_path, f'{model_type}.pt'))
     
     def load(self, path):
         load_model(self, path)
