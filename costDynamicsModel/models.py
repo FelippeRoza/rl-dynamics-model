@@ -2,6 +2,12 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 import os
+import mlflow
+from torch.utils.data import DataLoader, Subset
+from tqdm import tqdm
+from sklearn.utils import resample
+import numpy as np
+from .model_evaluation import evaluate_model_calibration
 
 def save_model(model, filepath):
     os.makedirs(os.path.dirname(filepath), exist_ok=True)
@@ -23,6 +29,75 @@ def nll_gaussian_loss(y_true, mean, log_var):
     # Return the mean NLL over all samples
     return torch.mean(nll)
 
+def create_bootstrap_datasets(dataset, num_models):
+    subset_indices = []
+    for _ in range(num_models):
+        indices = torch.randperm(len(dataset))[:len(dataset) // 2]  # Sample half the dataset
+        subset_indices.append(indices)
+    return [Subset(dataset, indices) for indices in subset_indices]
+
+def train(model, train_dataset, epoch_number, batch_size=1024):
+    # Split the dataset
+    optimizer = optim.Adam(model.parameters(), lr=0.001)
+    train_loader = DataLoader(train_dataset, batch_size=batch_size, num_workers=0, shuffle=True)
+    
+    mse_criterion = nn.MSELoss()
+    device = next(model.parameters()).device
+
+    model.train()  # Set model to training mode
+    train_loss = 0.0
+    train_mse = 0.0
+
+    for batch_idx, (inputs, targets) in tqdm(enumerate(train_loader), total=len(train_loader)):
+        inputs, targets = inputs.to(device), targets.to(device)
+        optimizer.zero_grad()
+        loss = model.calculate_loss(inputs, targets)
+        prediction = model(inputs)
+        if type(prediction) is tuple:
+                prediction = prediction[0] # mean
+        mse_loss = mse_criterion(prediction, targets)
+        loss.backward()
+        optimizer.step()
+        train_loss += loss.item()
+        train_mse += mse_loss.item()
+    train_loss /= len(train_loader)
+    train_mse /= len(train_loader)
+
+    mlflow.log_metric(f"{model.label}_train_loss", train_loss, step=epoch_number)
+    mlflow.log_metric(f"{model.label}_train_mse", train_mse, step=epoch_number)
+    print(f"{model.label} - Epoch [{epoch_number + 1}] - "
+              f"Train Loss: {train_loss:.4f} - Train MSE: {train_mse:.6f} - ")
+
+def evaluate_model(model, test_dataset, epoch_number, batch_size=1024):
+    # Evaluate on the test set
+    test_loader = DataLoader(test_dataset, batch_size=batch_size, num_workers=0, shuffle=False)
+    device = next(model.parameters()).device
+    model.eval()
+    test_mse = 0.0
+    criterion = nn.MSELoss()
+    with torch.no_grad():
+         for batch_idx, (inputs, targets) in enumerate(test_loader):
+            inputs, targets = inputs.to(device), targets.to(device)
+            prediction = model(inputs)
+            if type(prediction) is tuple:
+                prediction = prediction[0] # mean
+            mse_loss = criterion(prediction, targets)
+            test_mse += mse_loss.item()
+    test_mse /= len(test_loader)
+
+    avg_ece, avg_coverage_1sigma, avg_coverage_2sigma = evaluate_model_calibration(model, test_loader, device=device)
+    
+    metrics = {"mse_test": test_mse, "ece": avg_ece, 
+               "coverage_1sigma": avg_coverage_1sigma, "coverage_2sigma": avg_coverage_2sigma,
+    }   
+    # Log each metric to MLflow
+    for metric_name, metric_value in metrics.items():
+        mlflow.log_metric(f"{model.label}_{metric_name}", metric_value, step=epoch_number)
+
+    # Print all metrics in a single line for easier reading
+    print(f" Test Loss (MSE): {test_mse:.6f} - ECE: {avg_ece:.4f} - "
+        f"Coverage within 1 sigma: {avg_coverage_1sigma * 100:.2f}% - Coverage within 2 sigma: {avg_coverage_2sigma * 100:.2f}%"
+    )
 
 class BayesianNN(nn.Module):
     def __init__(self, input_dim, output_dim, hidden_dim=64):
